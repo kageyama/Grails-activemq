@@ -1,6 +1,7 @@
 import org.apache.activemq.ActiveMQConnection
 import org.apache.activemq.ActiveMQConnectionFactory
 import javax.jms.Session
+import org.springframework.jms.core.JmsTemplate
 
 class GrailsActivemqGrailsPlugin {
     // the plugin version
@@ -30,25 +31,20 @@ Brief description of the plugin.
     }
 
     def doWithSpring = {
-        // TODO Implement runtime spring config (optional)
+        activeMQConnectionFactory(ActiveMQConnectionFactory) {
+            brokerURL = ActiveMQConnection.DEFAULT_BROKER_URL
+        }
+
+        jmsTemplate(JmsTemplate) {
+            connectionFactory = activeMQConnectionFactory
+        }
     }
 
     def doWithDynamicMethods = { ctx ->
         application.allClasses.each { currentClass ->
             currentClass.metaClass.sendMessage = {queueName, messageBody ->
-                def url = ActiveMQConnection.DEFAULT_BROKER_URL // → url == failover://tcp://localhost:61616
-                def cf  = new ActiveMQConnectionFactory(url);
-                def conn= cf.createConnection()
-                conn.start()
-
-                def session = conn.createSession(false, Session.AUTO_ACKNOWLEDGE)
-                def destination = session.createQueue(queueName);
-                def producer = session.createProducer(destination)
-
-                def message = session.createTextMessage(messageBody)
-                producer.send( message )
-
-                conn.close()
+                println "send message with jmsTemplate. ${queueName}:${messageBody}"
+                ctx.jmsTemplate.convertAndSend queueName, messageBody.toString() //toString()しないと、GStringはSerializableではないのでMQ側で認識できない
             }
         }
     }
