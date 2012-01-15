@@ -2,8 +2,13 @@ import org.apache.activemq.ActiveMQConnection
 import org.apache.activemq.ActiveMQConnectionFactory
 import javax.jms.Session
 import org.springframework.jms.core.JmsTemplate
+import org.springframework.jms.listener.DefaultMessageListenerContainer
+import org.codehaus.groovy.grails.commons.GrailsClassUtils
+import org.springframework.jms.listener.adapter.MessageListenerAdapter
 
 class GrailsActivemqGrailsPlugin {
+    private static final LISTENER_CONTAINER_SUFFIX = 'MessageListenerContainer'
+
     // the plugin version
     def version = "0.1"
     // the version or versions of Grails the plugin is designed for
@@ -38,6 +43,16 @@ Brief description of the plugin.
         jmsTemplate(JmsTemplate) {
             connectionFactory = activeMQConnectionFactory
         }
+
+        application.serviceClasses.each { currentService ->
+            if (currentService.hasProperty('queueName')) {
+                "${currentService.propertyName}${LISTENER_CONTAINER_SUFFIX}"(DefaultMessageListenerContainer) {
+                    connectionFactory = activeMQConnectionFactory
+                    destinationName = GrailsClassUtils.getStaticPropertyValue(currentService.clazz, 'queueName')
+                    autoStartup = false
+                }
+            }
+        }
     }
 
     def doWithDynamicMethods = { ctx ->
@@ -47,10 +62,19 @@ Brief description of the plugin.
                 ctx.jmsTemplate.convertAndSend queueName, messageBody.toString() //toString()しないと、GStringはSerializableではないのでMQ側で認識できない
             }
         }
+
+
     }
 
     def doWithApplicationContext = { applicationContext ->
-        // TODO Implement post initialization spring config (optional)
+        applicationContext.getBeansOfType(DefaultMessageListenerContainer).each { beanName, bean ->
+            if (beanName.endsWith(LISTENER_CONTAINER_SUFFIX)) {
+                def serviceName = beanName - LISTENER_CONTAINER_SUFFIX
+                def adapter = new MessageListenerAdapter(delegate: applicationContext.getBean(serviceName))
+                bean.messageListener = adapter
+                bean.start()
+            }
+        }
     }
 
     def onChange = { event ->
