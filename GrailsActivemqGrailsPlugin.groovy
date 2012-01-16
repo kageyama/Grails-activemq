@@ -1,6 +1,5 @@
 import org.apache.activemq.ActiveMQConnection
-import org.apache.activemq.ActiveMQConnectionFactory
-import javax.jms.Session
+import org.apache.activemq.spring.ActiveMQConnectionFactory
 import org.springframework.jms.core.JmsTemplate
 import org.springframework.jms.listener.DefaultMessageListenerContainer
 import org.codehaus.groovy.grails.commons.GrailsClassUtils
@@ -58,7 +57,7 @@ Brief description of the plugin.
     def doWithDynamicMethods = { ctx ->
         application.allClasses.each { currentClass ->
             currentClass.metaClass.sendMessage = {queueName, messageBody ->
-                println "send message with jmsTemplate. ${queueName}:${messageBody}"
+                log.debug "send message with jmsTemplate. ${queueName}:${messageBody}"
                 ctx.jmsTemplate.convertAndSend queueName, messageBody.toString() //toString()しないと、GStringはSerializableではないのでMQ側で認識できない
             }
         }
@@ -70,9 +69,11 @@ Brief description of the plugin.
         applicationContext.getBeansOfType(DefaultMessageListenerContainer).each { beanName, bean ->
             if (beanName.endsWith(LISTENER_CONTAINER_SUFFIX)) {
                 def serviceName = beanName - LISTENER_CONTAINER_SUFFIX
-                def adapter = new MessageListenerAdapter(delegate: applicationContext.getBean(serviceName))
+                def adapter = new MessageListenerAdapter()
+                adapter.delegate = applicationContext.getBean(serviceName)
                 bean.messageListener = adapter
                 bean.start()
+                log.debug "Listener started. destinationName:${bean.destinationName} serviceName:${serviceName} defaultListenerMethod:${adapter.defaultListenerMethod}"
             }
         }
     }
